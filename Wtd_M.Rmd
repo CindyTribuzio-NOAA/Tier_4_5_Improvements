@@ -1,0 +1,185 @@
+---
+title: "GOA OROX Weighted M vs. group level ABCs"
+author: "Cindy Tribuzio"
+date: "7/26/2021"
+output: 
+  html_document:
+    fig_height: 8
+    fig_width: 10
+    df_print: paged
+    rows.print: 25
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE, scipen=999)
+```
+
+```{r, echo = FALSE, warning = FALSE, results = 'hide',include=FALSE}
+libs <- c("plyr","tidyverse","ggplot2","patchwork")
+if(length(libs[which(libs %in% rownames(installed.packages()) == FALSE )]) > 0) {
+  install.packages(libs[which(libs %in% rownames(installed.packages()) == FALSE)])}
+lapply(libs, library, character.only = TRUE)
+
+
+datadir<-(paste(getwd(),"/Data/",sep=""))
+outdir<-(paste(getwd(),"/Output/",sep=""))
+```
+# Description
+The Gulf of Alaska Other Rockfish stock assessment (GOA OROX) estimates an assessment level weighted natural mortality (M) value for application to a Tier 5 complex wide biomass estimate to calculate ABC/OFLs. Other assessments estimate the M group biomass and harvest specifications at the M group level and sum those for the complex level ABC/OFLs. Below is a comparison of the two methods using the GOA OROX assessment as an example. Note that this comparison is still using the current assessment methods, where M group variance is estimated and not summed and all rare Tier 5 species are also included, to allow for a direct comparison to historical ABCs. The current assessment method began in 2015, thus there are only three assessments to conduct this comparison.
+
+## Species specific M compared to Wtd M
+Below are the M point estimates for the Tier 5 OROX species
+```{r, include=F}
+T5spec <- c(30170,30200,30530,30550,30475,30430,30100,30190,
+             30350,30220,30600,30240,30535,30260, 30340, 30400, 30490)
+OROXM <- read_csv(paste(datadir,"OROX_natM.csv",sep=""))
+
+Mvals <- OROXM %>% 
+  filter(SPECIES_CODE %in% T5spec)
+```
+```{r, echo = F}
+Mvals
+```
+The time series of Weighted M used in the OROX assessments
+```{r, include=F}
+Year <- c(2015, 2017, 2019)
+WtM <- c(0.07003092, 0.0739528, 0.064266)
+WtM2 <- as.data.frame(cbind(Year,WtM))
+```
+```{r,echo=F}
+WtM2
+```
+## Comparing summed ABCs to complex level ABC.
+Note that the split fractions for West Yak/East Yak are not available at the species level, so the same split fraction was applied to each M group.
+```{r, include=F}
+splits <- read_csv(paste(datadir,"Split_fractions.csv",sep=""))
+Spfrac <- splits %>% 
+  rename(East_frac = 'Eastern Fraction', West_frac = 'Western Fraction') %>% 
+  select(Year, East_frac, West_frac) %>% 
+  filter(Year >2014)
+```
+```{r,echo = F}
+Spfrac
+```
+### Summing apportioned ABCs
+The current assessment ABCs are apportioned based on the proportions of the combined biomass all Tier 5 species in each management area for the most recent RFX modeled biomass, which in this case corresponds to the most recent survey. For this comparison, the M group ABCs are calculated for each managment area, then summed. In essence, the biomass is apportioned first, then ABCs calculated, then summed across M groups.
+```{r,include = F}
+WCABC <- c(850, 1539, 634)
+WYABC <- c(334, 266, 273)
+EYABC <- c(2178, 2768, 2236)
+GOAABC <- c(3362, 4573, 3143)
+MABC <- as.data.frame(cbind(Year, WtM, WCABC, WYABC, EYABC, GOAABC))
+MABC2 <- MABC %>% 
+  rename(Weighted_M = WtM, West_Central_ABC = WCABC, 
+         East_Yak_ABC = EYABC, GOA_ABC = GOAABC)
+
+#collect biomass for each M group in each year from RFX output files
+RFX2019 <- read_csv(paste(datadir,"RFX_Biomass_GOA_OROX2019.csv",sep=""))
+GOA2019 <- RFX2019 %>% 
+  filter(YEAR == 2019, REGULATORY_AREA_NAME %in% 
+           c('GOA'),
+         Group %in% c('OROX_M01', 'OROX_M0092', 'OROX_M007', 'OROX_M006', 'OROX_M005')) %>% 
+  select(Biom_est, Group)
+R2019 <- RFX2019 %>% 
+  filter(YEAR == 2019, REGULATORY_AREA_NAME %in% 
+           c('CENTRAL GOA', 'WESTERN GOA', 'EASTERN GOA'),
+         Group %in% c('OROX_M01', 'OROX_M0092', 'OROX_M007', 'OROX_M006', 'OROX_M005')) %>% 
+  select(YEAR, REGULATORY_AREA_NAME, Biom_est, Group)
+R2019b <- left_join(R2019, GOA2019, by = c("Group"))
+R2019b <- R2019b %>% 
+  rename(Area_Biom = Biom_est.x, GOA_Biom = Biom_est.y, REG_AREA = REGULATORY_AREA_NAME) %>% 
+  mutate(areaprop = Area_Biom/GOA_Biom)
+
+RFX2017 <- read_csv(paste(datadir,"RFX_Biomass_GOA_OROX2017.csv",sep=""))
+GOA2017 <- RFX2017 %>% 
+  filter(YEAR == 2017, REG_AREA %in% 
+           c('GOA'),
+         Group %in% c('OROX_M01', 'OROX_M0092', 'OROX_M007', 'OROX_M006', 'OROX_M005')) %>% 
+  select(Biom_est, Group)
+R2017 <- RFX2017 %>% 
+  filter(YEAR == 2017, REG_AREA %in% 
+           c('CENTRAL GOA', 'WESTERN GOA', 'EASTERN GOA'),
+         Group %in% c('OROX_M01', 'OROX_M0092', 'OROX_M007', 'OROX_M006', 'OROX_M005')) %>% 
+  select(YEAR, REG_AREA, Biom_est, Group)
+R2017b <- left_join(R2017, GOA2017, by = c("Group"))
+R2017b <- R2017b %>% 
+  rename(Area_Biom = Biom_est.x, GOA_Biom = Biom_est.y) %>% 
+  mutate(areaprop = Area_Biom/GOA_Biom)
+
+RFX2015 <- read_csv(paste(datadir,"RFX_Biomass_GOA_OROX2015.csv",sep=""))
+GOA2015 <- RFX2015 %>% 
+  filter(YEAR == 2015, REGULATORY_AREA_NAME %in% 
+           c('GOA'),
+         Group %in% c('OROX_M01', 'OROX_M0092', 'OROX_M007', 'OROX_M006', 'OROX_M005')) %>% 
+  select(Biom_est, Group)
+R2015 <- RFX2015 %>% 
+  filter(YEAR == 2015, REGULATORY_AREA_NAME %in% 
+           c('CENTRAL GOA', 'WESTERN GOA', 'EASTERN GOA'),
+         Group %in% c('OROX_M01', 'OROX_M0092', 'OROX_M007', 'OROX_M006', 'OROX_M005')) %>% 
+  select(YEAR, REGULATORY_AREA_NAME, Biom_est, Group)
+R2015b <- left_join(R2015, GOA2015, by = c("Group"))
+R2015b <- R2015b %>% 
+  rename(Area_Biom = Biom_est.x, GOA_Biom = Biom_est.y, REG_AREA = REGULATORY_AREA_NAME) %>% 
+  mutate(areaprop = Area_Biom/GOA_Biom)
+
+RFXdat <- rbind(R2015b, R2017b, R2019b)
+
+RFXdat2 <- RFXdat %>% 
+  mutate(M = ifelse(grepl("M006",Group),0.06,
+         ifelse(grepl("M007",Group),0.07,
+         ifelse(grepl("M0092",Group),0.092,
+         ifelse(grepl("M01",Group),0.1,0.05)))),
+         ABC = 0.75*M*Area_Biom,
+         ABCarea = ifelse(grepl("CENTRAL",REG_AREA),
+                          "West_Central_ABC",
+                          ifelse(grepl("WESTERN", REG_AREA),
+                                 'West_Central_ABC', 'EGOA'))) %>% 
+  group_by(YEAR, ABCarea) %>% 
+  summarize(sumappABC = sum(ABC)) %>% 
+  rename(Year = YEAR)
+EGOAsplit <- RFXdat2 %>% 
+  filter(ABCarea == "EGOA")
+Esplit <- left_join(EGOAsplit,Spfrac)
+Esplit2 <- Esplit %>% 
+  mutate(East_Yak_ABC = sumappABC*East_frac, 
+         WYABC = sumappABC-East_Yak_ABC) %>% 
+  select(Year,East_Yak_ABC,WYABC) %>% 
+  pivot_longer(!Year, names_to = "ABCarea", values_to = "sumappABC")
+sumapp <- rbind(RFXdat2,Esplit2)
+sumapp <- sumapp %>% 
+  filter(ABCarea != "EGOA")
+
+MABC3 <- MABC2 %>% 
+  select(-Weighted_M,-GOA_ABC) %>% 
+  pivot_longer(!Year, names_to = "ABCarea", values_to = "ASSESS_ABC")
+
+ABCcomp <- inner_join(MABC3, sumapp)
+
+#test summing by area first, then calc ABC, then apportioning ABC
+RFXdat3 <- RFXdat %>% 
+  group_by(YEAR, Group) %>% 
+  summarize(GBiom = sum(Area_Biom)) %>% 
+    mutate(M = ifelse(grepl("M006",Group),0.06,
+         ifelse(grepl("M007",Group),0.07,
+         ifelse(grepl("M0092",Group),0.092,
+         ifelse(grepl("M01",Group),0.1,0.05)))),
+         ABC = 0.75*M*GBiom) %>% 
+  rename(Year = YEAR) %>% 
+  group_by(Year) %>% 
+  summarise(GOAABC = sum(ABC))
+
+GOAABC <- ABCcomp %>% 
+  group_by(Year) %>% 
+  summarize(Assessment_ABC = sum(ASSESS_ABC), summed_ABC = sum(sumappABC))
+
+```
+
+In the below table, "Asses_ABC" is the value directly from the assessments and the "sumappABC" is the summed M Group ABCs.
+```{r, echo = F}
+ABCcomp
+GOAABC
+```
+
+## Conclusions
+Summing the M Group ABCs does result in some substantial differences in management area ABCs when compared to current assessment methods. But, at the FMP level, the impact is reduced. This is likely due to various species distributions within the M groups, in particular the M = 0.1 group, which only contains harlequin rockfish. A deeper dive into this could be done (e.g., creating RFX models for assessments prior to 2015 or exploring individual M group distributions in more detail), but may not be necessary. Calculating the ABCs at the level of the M group is more representative of the biomass for that group in that area and is likely more appropriate for this assessment. 
+

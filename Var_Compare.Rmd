@@ -1,0 +1,250 @@
+---
+title: "GOA OROX Variance Comparison"
+author: "Cindy Tribuzio"
+date: "7/15/2021"
+output: 
+  html_document:
+    fig_height: 8
+    fig_width: 10
+    df_print: paged
+    rows.print: 25
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE, scipen=999)
+```
+
+```{r, echo = FALSE, warning = FALSE, results = 'hide',include=FALSE}
+libs <- c("plyr","tidyverse","ggplot2","patchwork")
+if(length(libs[which(libs %in% rownames(installed.packages()) == FALSE )]) > 0) {
+  install.packages(libs[which(libs %in% rownames(installed.packages()) == FALSE)])}
+lapply(libs, library, character.only = TRUE)
+
+
+datadir<-(paste(getwd(),"/Data/",sep=""))
+outdir<-(paste(getwd(),"/Output/",sep=""))
+```
+# Description
+Design based estimates of survey biomass are provided by the Groundfish Assessment Program (GAP) for individual species. However, in cases where there are rare or limited data, a species biomass is not estimated. In the case of the Gulf of Alaska (GOA) Other Rockfish stock complex (OROX), three species which are part of the complex do not have estimates of biomass created by GAP (blackgill, bocaccio,  and stripetail rockfish). To address this, the assessment author copied the design based estimator method used by the GAP to create estimates of biomass for those species.
+
+A second consideration is if it is appropriate to simply sum the individual species biomasses and variances to create the biomass and variance for the natural mortality (M) groupings using the stock assessment. The current GOA OROX assessment creates a new designed based estimate of biomass and variance for the whole M group by combining the individual species survey data and treating as a single species, as opposed to summing the individual species, which is the method used in other assessments.  
+
+This document will examine: 1) are there differences in the GAP estimates and those created by the assessment author for individual species; and 2) is there a difference between summing the biomass and variances or estimating M group level values.
+
+## Individual species comparison
+GAP individual species point estimates by regulatory area were downloaded via AKFIN on 7/16/2021. RACE Survey>GOA-Biomass by Regulatory Area: all years, areas and OROX species: 
+
+```{r, echo = FALSE,results='hide',include=FALSE}
+GAPdat<-read_csv(paste(datadir,"Biomass by Regulatory Area - GOA.csv",sep=""))
+T45spec <- c(30170,30200,30530,30550,30475,30430,30560,30100,30190,
+             30350,30220,30600,30240,30470,30535)
+Gdat <- GAPdat %>% 
+  select(Survey, Year, 'Regulatory Area Name','Area Biomass',
+         'Area Biomass Var','Haul Count', 'Catch Count',
+         'Species Code', 'Common Name') %>% 
+  rename(REGULATORY_AREA_NAME = 'Regulatory Area Name', 
+         GAPHAUL_COUNT = 'Haul Count', YEAR = 'Year', 
+         GAPCATCH_COUNT = 'Catch Count', GAPBiom = 'Area Biomass',
+         GAPVar = 'Area Biomass Var', RACE_code = 'Species Code',
+         Group = 'Common Name', SURVEY = 'Survey') %>% 
+  filter(RACE_code %in% T45spec)
+Species <- Gdat %>% 
+  select(RACE_code,Group) %>% 
+  unique()
+```
+```{r,echo=FALSE}
+Species
+```
+The GAP estimates are compared to those created by the OROX assessment code:
+```{r, include = FALSE}
+OROXbiom <- read_csv(paste(datadir,"RACE_Biomass_GOA_OROX_SPECIES.csv",sep=""))
+GOAOROX <- OROXbiom %>% 
+  filter(SURVEY == "GOA") %>% 
+  select(!c(SE,CV))
+OROXcodes <- read_csv(paste(datadir,"ORocks_codes.csv",sep=""))
+codes <- OROXcodes %>% 
+  select(Rname,RACE_code)
+GOAOROX <- left_join(GOAOROX,codes, by = c("Group" = "Rname"))
+GAPSA <- inner_join(GOAOROX,Gdat, by = 
+                      c('SURVEY','YEAR','REGULATORY_AREA_NAME','RACE_code'))
+Bdat <- GAPSA %>% 
+  select(Biomass,GAPBiom) %>% 
+  rename(SA = Biomass, GAP = GAPBiom) %>% 
+  mutate(Metric = "Biomass")
+Bplot<-ggplot(Bdat, aes(x = SA, y = GAP))+
+  geom_point()+
+  geom_abline(intercept =0 , slope = 1)+
+  facet_grid(Metric~., scales = "free")
+Vdat <- GAPSA %>% 
+  select(Variance,GAPVar) %>% 
+  rename(SA = Variance, GAP = GAPVar) %>% 
+  mutate(Metric = "Variance")
+Vplot<-ggplot(Vdat, aes(x = SA, y = GAP))+
+  geom_point()+
+  geom_abline(intercept =0 , slope = 1)+
+  facet_grid(Metric~., scales = "free")
+Hdat <- GAPSA %>% 
+  select(HAUL_COUNT,GAPHAUL_COUNT) %>% 
+  rename(SA = HAUL_COUNT, GAP = GAPHAUL_COUNT) %>% 
+  mutate(Metric = "Hauls")
+Hplot<-ggplot(Hdat, aes(x = SA, y = GAP))+
+  geom_point()+
+  geom_abline(intercept =0 , slope = 1)+
+  facet_grid(Metric~., scales = "free")
+Cdat <- GAPSA %>% 
+  select(CATCH_COUNT,GAPCATCH_COUNT) %>% 
+  rename(SA = CATCH_COUNT, GAP = GAPCATCH_COUNT) %>% 
+  mutate(Metric = "Catch")
+Cplot<-ggplot(Cdat, aes(x = SA, y = GAP))+
+  geom_point()+
+  geom_abline(intercept =0 , slope = 1)+
+  facet_grid(Metric~., scales = "free")
+```
+
+```{r,echo = FALSE}
+Bplot/
+  Vplot/
+  Hplot/
+  Cplot
+```
+
+## Summing vs. Re-estimating
+Biomass estimates were created for each of the M groups used in the GOA OROX stock assessment using the current assessment methods and ONLY species in which GAP provides estimates for. GAP estimates were summed for each M group to compare to the estimates using the current assessment methods.
+```{r, echo = FALSE, include = FALSE}
+bgroups_GAP<-list("species"=list(spec1=list(30100,30170,30190,30200,30220,30240,30350,30430,30475,30535,30550,30600),
+                             spec2=30560,
+                             spec3=30430,
+                             spec4=30535,
+                             spec5=list(30170,30240,30200),
+                             spec6=list(30190,30350,30475,30550,30600),
+                             spec7=list(30100,30220),
+                             spec8=list(30100,30170,30190,30200,30220,30240,30350,30430,30475,30535,30550,30560,30600)),
+              "outname"=list(out1="OROX_allnoSC",
+                             out2="OROX_SC",
+                             out3="OROX_M01",
+                             out4="OROX_M0092",
+                             out5="OROX_M007",
+                             out6="OROX_M006",
+                             out7="OROX_M005",
+                             out8="OROX_all"))
+SAbiom <- read_csv(paste(datadir,"RACE_Biomass_GOA_OROX_GAPspec.csv",sep=""))
+SAGOAbiom <- SAbiom %>% 
+  filter(SURVEY == "GOA") %>% 
+  select(!c(SE,CV))
+
+#tbl_colnames <- c("YEAR","REGULATORY_AREA_NAME","Bsum","Vsum","Group" )
+loopmat<-matrix(nrow=0, ncol=5)
+  for (i in 1:ifelse(length(bgroups_GAP)>1,
+                     length(bgroups_GAP$species),
+                     length(bgroups_GAP))) {
+    ifelse(length(bgroups_GAP)==1, 
+           spec<-bgroups_GAP,
+           spec<-as.data.frame(bgroups_GAP$species[i]))
+    ifelse(length(bgroups_GAP)==1, 
+           outn<-outname,
+           outn<-bgroups_GAP$outname[i][[1]])
+    temp<-Gdat[Gdat$RACE_code%in%spec,] 
+    if(nrow(temp)==0){
+      print(paste(bgroups_GAP$outname[i][[1]],'Species has no biomass'))
+      next
+    }
+    tempsum <- ddply(temp, c("YEAR","REGULATORY_AREA_NAME"), summarize,
+                     Bsum = sum(GAPBiom), Vsum = sum(GAPVar))
+    tempsum$Group <- outn
+    #the below works, but I can't figure out the rbind
+    #tempsum <- temp %>% 
+    #  select(YEAR, REGULATORY_AREA_NAME, GAPBiom, GAPVar, RACE_code) %>% 
+    #  group_by(YEAR, REGULATORY_AREA_NAME) %>% 
+    #  summarise(Bsum = sum(GAPBiom), Vsum = sum(GAPVar)) %>% 
+    #  mutate(Group = outn)
+    loopmat <- rbind(loopmat,tempsum)
+  }
+
+Bcomp <- inner_join(SAGOAbiom, loopmat, by = c("YEAR", "REGULATORY_AREA_NAME","Group"))
+Bcomp2 <- Bcomp %>% 
+  select(YEAR, REGULATORY_AREA_NAME, Variance, Vsum, Group) %>% 
+  rename(SA = 'Variance', GAP = 'Vsum') %>% 
+  mutate(Vardiff = SA-GAP, prop = round((Vardiff/SA)*100,2)) %>% 
+  arrange(desc(abs(prop),))
+```
+```{r, echo=F}
+ggplot(Bcomp2, aes(x=SA, y=GAP, fill = Group, color = Group, size = prop))+
+  geom_point()+
+  geom_abline(intercept =0 , slope = 1)
+```
+Figure shows the proportional difference that the GAP variance is from the assessment estimated variance. Below table is ordered to highlight the groups with the biggest proportional difference. When estimating variance for a larger number of species, the difference between the assessment method and summing the GAP estimates are greater. Of note, the OROX_all is all Tier 5 species and sharpchin combined, which is not used for harvest recommendations. The OROX_allnoSC is all of the Tier 5 species only, which is used for ABC/OFL calculations and shown below.
+```{r,echo=F}
+Bcomp2
+```
+Below is the comparison of the RFX model outputs for the SA and the summed GAP methods.
+
+```{r, include=FALSE}
+#write csv to mimic what goes into RFX model
+Bcomp3 <- Bcomp %>% 
+  select(SURVEY, YEAR, REGULATORY_AREA_NAME, Bsum, Vsum, HAUL_COUNT, CATCH_COUNT, Group) %>% 
+  rename(Biomass = Bsum, Variance = Vsum) %>% 
+  mutate(SE = sqrt(Variance), CV = SE/Biomass)
+write.csv(Bcomp3,paste(outdir,"RACE_Biomass_GOA_summed.csv",sep=""),row.names = F)
+
+SARFX <- read_csv(paste(datadir,"RFX_Biomass_GOA_OROX_GAPspec.csv",sep=""))
+SAGOA <- SARFX %>% 
+  filter(REGULATORY_AREA_NAME %in% c("CENTRAL GOA","EASTERN GOA","GOA","WESTERN GOA")) %>% 
+  mutate(Method = "SA")
+GAPRFX <- read_csv(paste(datadir,"RFX_Biomass_GOA_summed.csv",sep=""))
+GAPGOA <- GAPRFX %>% 
+  filter(REGULATORY_AREA_NAME %in% c("CENTRAL GOA","EASTERN GOA","GOA","WESTERN GOA")) %>% 
+  mutate(Method = "GAP")
+
+RFXdat <- rbind(SAGOA,GAPGOA)
+
+```
+```{r, echo=F}
+ggplot(RFXdat[RFXdat$Group =="OROX_allnoSC",],aes(x=YEAR,y=Biom_est/1000,fill=Method,color=Method))+
+  geom_point()+
+  #geom_ribbon(aes(ymin=Biom_LL/1000,ymax=Biom_UL/1000),fill="grey85")+
+  geom_errorbar(aes(ymax=Biom_UL/1000,ymin=Biom_LL/1000,fill=Method,color=Method),width=1)+
+  geom_line()+
+  facet_grid(REGULATORY_AREA_NAME~Group,scales="free_y")
+```
+The above figure is filtered for the species group that is used for the ABC and OFL calculations. Appears to make little difference in the RFX output.
+
+## ABC and OFLs as a result either method
+```{r, include=FALSE}
+GAPabc <- read_csv(paste(datadir,"GAP_ABCs.csv",sep=""))
+SAabc <- read_csv(paste(datadir,"SA_ABCs.csv",sep=""))
+GAPGOAabc <- GAPabc %>% 
+  filter(REG_AREA %in% c("GOA", "EYAK","WYAK" , "CENTRAL GOA", "WESTERN GOA")) %>% 
+  filter(Group == "T5") %>% 
+  select(REG_AREA, ABC) %>% 
+  rename(GAP_ABC = ABC)
+SAGOAabc <- SAabc %>% 
+  filter(REG_AREA %in% c("GOA", "EYAK","WYAK" , "CENTRAL GOA", "WESTERN GOA")) %>% 
+  filter(Group == "T5") %>% 
+  select(REG_AREA, ABC) %>% 
+  rename(SA_ABC = ABC)
+ABC <- inner_join(GAPGOAabc,SAGOAabc)
+```
+There is little difference between the resultant ABCs when the GAP variances are summed compared to restimating the variance for each group.
+```{r, echo = F}
+ABC
+```
+## Does including those rare species matter?
+```{r, include = F}
+fullabc <- read_csv(paste(datadir,"FULLassessment_ABCs.csv",sep=""))
+fullGOAabc <- fullabc %>% 
+  filter(REG_AREA %in% c("GOA", "EYAK","WYAK" , "CENTRAL GOA", "WESTERN GOA")) %>% 
+  filter(Group == "T5") %>% 
+  select(REG_AREA, ABC) %>% 
+  rename(Full_ABC = ABC)
+ABC2 <- inner_join(fullGOAabc,SAGOAabc)
+```
+The below table compares the ABCs as a result of using the current stock assessment method, but only including species in which the GAP program provides biomass estimate, with the ABCs of including ALL of the FMP specified species with any survey data. The only differences is the East Yakutat and West Yakutat areas.
+```{r, echo = F}
+ABC2
+```
+
+## Conclusions
+* The code used in the GOA OROX assessment correctly mimics that used in the GAP program for individual species biomass and variance estimates
+* Simply summing the variance across species within an M group can result in substantial differences in the estimated variance, especially in groups summing large numbers of species, with the M group level estimated variances (i.e., the method currently used in the GOA OROX assessment, SA in the above results) being larger than the summed GAP variance estimates
+* The differences in variances do not result in substantial differences in the RFX model outputs and subsequent ABCs/OFLs
+* The inclusion of rare species that GAP does not regularly produce biomass estimates for results in a slight decrease in the ABC, in particular in the EGOA.
